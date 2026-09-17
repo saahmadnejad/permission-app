@@ -1,0 +1,96 @@
+# npm publish pipeline.
+#
+# SETUP (maintainer, one time — secrets are NEVER committed):
+#   1. Revoke any npm token that was ever pasted into chat, tickets, or logs
+#      (npmjs.com → Access Tokens → revoke). Pasted tokens are compromised.
+#   2. Recommended: enable *trusted publishing* (OIDC) on the npm package,
+#      pointing at this repo + this workflow file. Then NO token/secret is
+#      needed at all — npm mints a short-lived token per run.
+#   3. Fallback: create a *granular automation* token scoped to just this
+#      package and add it as a GitHub repo secret named NPM_TOKEN
+#      (Repo → Settings → Secrets and variables → Actions).
+#   4. Point PACKAGE_DIR (below / workflow input) at the publishable package.
+#      It must have name + version and must NOT be "private": true.
+#
+# This workflow only ever reads ${{ secrets.NPM_TOKEN }} at runtime.
+# No token value exists in this repo, its history, or its logs.
+
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      package_dir:
+        description: 'Publishable package directory'
+        required: false
+        default: 'packages/core'
+        type: string
+      dry_run:
+        description: 'Run npm publish --dry-run instead of publishing'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write # required for --provenance (Sigstore) and OIDC trusted publishing
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PACKAGE_DIR: ${{ inputs.package_dir || 'packages/core' }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm (trusted-publishing support)
+        run: npm install -g npm@latest
+
+      - name: Verify publishable package
+        run: |
+          test -f "$PACKAGE_DIR/package.json" || { echo "::error::No package.json in $PACKAGE_DIR"; exit 1; }
+          node -e "const p=require('./'+process.env.PACKAGE_DIR+'/package.json');if(p.private){console.error('::error::Refusing to publish a private package');process.exit(1)}if(!p.name||!p.version){console.error('::error::package.json needs name and version');process.exit(1)}console.log('Publishing '+p.name+'@'+p.version)"
+
+      - name: Install dependencies
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          if [ -f yarn.lock ]; then yarn install --frozen-lockfile;
+          elif [ -f package-lock.json ]; then npm ci;
+          else npm install --no-audit --no-fund; fi
+
+      - name: Build (if present)
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: npm run build --if-present
+
+      - name: Configure npm auth (token fallback only)
+        env:
+          NPM_TOKEN_SET: ${{ secrets.NPM_TOKEN != '' }}
+        run: |
+          if [ "$NPM_TOKEN_SET" = "true" ]; then
+            echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" >> ~/.npmrc
+            echo "Auth: NPM_TOKEN secret."
+          else
+            sed -i '/registry.npmjs.org\/:_authToken/d' ~/.npmrc
+            echo "Auth: OIDC trusted publishing (no secret configured)."
+          fi
+
+      - name: Publish to npmjs
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          ARGS="--provenance --access public"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          npm publish $ARGS
