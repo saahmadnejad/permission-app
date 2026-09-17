@@ -212,55 +212,38 @@ isNodeVisible({ query: null, children: [{ query: 'VIEW_HOME' }] }, can); // true
 canActivateRoute('ADMIN_PANEL', can); // false
 ```
 
-## 4. React usage (same core, ~30 lines of glue)
+## 4. React demo (same core, real app)
 
-`src/react/adapter.ts` ships `showInReact()` + a tested sketch. Copy into a `.tsx`:
+`react-demo/` is a runnable Vite + React 19 + React Router 7 app that imports
+`../src/core` verbatim via the `@perm-core` alias — no copy, no fork:
 
-```tsx
-import { createContext, useContext, useSyncExternalStore } from 'react';
-import { showInReact, type Query, type PermissionStore } from './core';
-
-const PermCtx = createContext<PermissionStore | null>(null);
-
-export function usePermission(q: Query, ctx?: unknown): boolean {
-  const store = useContext(PermCtx);
-  if (!store) throw new Error('Missing PermissionProvider');
-  return useSyncExternalStore(
-    (cb) => store.onChange(cb),
-    () => showInReact(q, store, ctx),
-  );
-}
-
-export function Show({ query, context, denied = 'hide', fallback = null, children }) {
-  const ok = usePermission(query, context);
-  if (ok) return <>{children}</>;
-  if (denied === 'hide') return <>{fallback}</>;
-  return <span aria-disabled="true">{children}</span>;
-}
-
-export function ProtectedRoute({ query, children }) {
-  const ok = usePermission(query);
-  if (!ok) return <Navigate to="/denied" replace />;
-  return <>{children}</>;
-}
+```bash
+cd react-demo
+yarn install
+yarn dev      # → http://localhost:4301/
+yarn build
 ```
 
-```tsx
-<Show query="EDIT_USER" denied="disable" fallback={null}>
-  <button>Edit</button>
-</Show>
-<Show query={(row) => ({ perm: 'EDIT_USER', context: { owner: row.ownerId } })} context={row}>
-  <RowActions />
-</Show>
-```
+Parity with Angular, section-for-section: mode switcher + per-permission
+checkboxes, nav hierarchy (`Navbar`/`SubNavbar`), row-level `UsersTable`
+(`denied: 'disable'`), `Dropdown`, standalone `ActionButton`s, `ConfirmModal`,
+live composite queries, guard simulator table, and real routes:
 
-Porting checklist: copy `src/core/*` verbatim -> implement one `PermissionStore`
-(usually `AsyncPermissionStore` works as-is) -> add the ~30-line Context/hook above.
-No logic rewrite: `evaluate.ts` / `guards.ts` / `registry.ts` are UI-agnostic.
+- `/` playground, `/users` (guard `VIEW_USERS_TABLE`), `/settings`
+  (guard `all [ADMIN_PANEL, VIEW_SETTINGS]`), `/denied`.
+- Guards use the same core `canActivateRoute()` as Angular's `permGuard`,
+  applied as router `loader`s + a `<Protected>` element wrapper.
 
-## 5. Demo map
+Key files: `react-demo/src/permissions.tsx` (`PermissionProvider`,
+`usePermission`, `useNodeVisible`, `<Show>` — the twin of `*appShowIf`),
+`components.tsx` (dumb UI), `pages.tsx` (playground + pages), `router.tsx`.
 
-`AppComponent` registers `registerDemoNodes()` and renders:
+> The older `src/react/adapter.ts` sketch (`showInReact`) is kept as
+> documentation; the runnable demo lives in `react-demo/`.
+
+## 5. Demo map (both apps)
+
+Angular `AppComponent` playground and React `Playground` render the same sections:
 
 | UI                 | node id            | rule in action                                        |
 | ------------------ | ------------------ | ----------------------------------------------------- |
