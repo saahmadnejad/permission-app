@@ -1,0 +1,40 @@
+{
+  "name": "permission-visibility-angular",
+  "version": "0.1.0",
+  "description": "Angular adapter for permission-visibility-core: signal-based PermissionService, *appShowIf directive, permGuard.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "ngc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@angular/common": "^20.0.0",
+    "@angular/core": "^20.0.0",
+    "@angular/router": "^20.0.0",
+    "rxjs": "^7.0.0"
+  },
+  "dependencies": {
+    "permission-visibility-core": "0.1.0"
+  },
+  "devDependencies": {
+    "@angular/common": "^20.3.0",
+    "@angular/compiler": "^20.3.0",
+    "@angular/core": "^20.3.0",
+    "@angular/router": "^20.3.0",
+    "rxjs": "~7.8.0",
+    "typescript": "~5.9.2"
+  }
+}

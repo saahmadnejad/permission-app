@@ -1,7 +1,12 @@
 # PermissionApp — permission-aware UI hierarchy
 
-A small Angular 20 demo + a **framework-free permission core** (`src/core`) that makes
-**every UI component permission-aware**.
+A monorepo of publishable packages + two demo apps that make **every UI component
+permission-aware**.
+
+- [`permission-visibility-core`](packages/core) — framework-free permission engine
+- [`permission-visibility-angular`](packages/angular) — Angular 20 adapter (Signals)
+- [`permission-visibility-react`](packages/react) — React 18/19 adapter (hooks)
+- [`permission-visibility-demo-data`](packages/demo-data) — shared demo dataset (not for prod)
 
 Rule: a parent (sidebar section, nav, table, modal...) is shown **iff it is itself
 allowed AND at least one child in its subtree is visible**. Layout-only containers
@@ -9,28 +14,31 @@ skip the own-check. Hiding is UX only — the same `can()` decision also feeds r
 guards, and the backend must re-check.
 
 ```
-src/
-  core/   # pure TS, zero Angular/RxJS/DOM — importable from React as-is
-    types.ts     # Query, QueryInput, PermissionNodeDef, DeniedBehavior
-    evaluate.ts  # evaluateQuery(), isNodeVisible(), isNodeEnabled(), CanFn
-    store.ts     # PermissionStore, InMemoryPermissionStore, AsyncPermissionStore
-    registry.ts  # central permissionRegistry + defineNode(s)
-    guards.ts    # canActivateRoute(), canShowNode(), visibleChildren()
-  app/    # thin Angular adapters + dumb demo UI
-    permission.service.ts  # Signal-based adapter over the core store
-    show-if.directive.ts   # *appShowIf="query|node; context:ctx; denied:..."
-    perm.guard.ts          # CanActivateFn from the same can()
-  react/
-    adapter.ts  # showInReact() + copy-paste usePermission/<Show>/<ProtectedRoute> sketch
+packages/
+  core/        # pure TS, zero Angular/React/DOM — the engine
+    src/
+      types.ts     # Query, QueryInput, PermissionNodeDef, DeniedBehavior
+      evaluate.ts  # evaluateQuery(), isNodeVisible(), isNodeEnabled(), CanFn
+      store.ts     # PermissionStore, InMemoryPermissionStore, AsyncPermissionStore
+      registry.ts  # central permissionRegistry + defineNode(s)
+      guards.ts    # canActivateRoute(), canShowNode(), visibleChildren()
+    test/        # node:test suite (no framework deps)
+  angular/     # Signal-based PermissionService, *appShowIf, permGuard (ngc, partial)
+  react/       # PermissionProvider, usePermission, useNodeVisible, <Show>
+  demo-data/   # ALL_PERMISSIONS, PARTIAL_PERMISSIONS, registerDemoNodes() — demos only
+demos/
+  angular-playground/  # Angular 20 app consuming the packages (ng serve)
+  react-playground/    # Vite + React 19 + Router 7 app consuming the packages
 ```
 
 ## Quick start
 
 ```bash
-yarn install
-ng serve        # -> http://localhost:4200/
-ng build
-ng test
+npm install
+npm run build:packages   # build all four packages
+npm run test:packages    # node:test suites (core + demo-data)
+npm start                # Angular playground -> http://localhost:4200/
+npm run dev:react        # React playground   -> http://localhost:4301/
 ```
 
 ## 1. Core concepts
@@ -38,7 +46,7 @@ ng test
 ### Permission queries
 
 ```ts
-import type { Query } from './core';
+import type { Query } from 'permission-visibility-core';
 
 const a: Query = 'EDIT_USER';
 const b: Query = { all: ['VIEW_USERS', 'EDIT_USER'] };
@@ -97,12 +105,13 @@ Any implementation substitutes for any other (Liskov).
 `PermissionService` (`providedIn: 'root'`) wraps the core store with Signals:
 
 ```ts
+import { PermissionService } from 'permission-visibility-angular';
+
 inject(PermissionService).can('EDIT_USER'); // sync, tracked in reactive ctx
 perms.canSignal('EDIT_USER'); // Signal<boolean> — preferred in templates
 perms.visibleSignal(node);    // node-subtree visibility
 perms.enabledSignal(node);    // node enabled state
 perms.setPermissions([...]);  // login/logout/role-switch/impersonate
-perms.useDemoMode('full' | 'partial' | 'none'); // demo switcher
 ```
 
 ### Show / hide with `*appShowIf`
@@ -214,14 +223,12 @@ canActivateRoute('ADMIN_PANEL', can); // false
 
 ## 4. React demo (same core, real app)
 
-`react-demo/` is a runnable Vite + React 19 + React Router 7 app that imports
-`../src/core` verbatim via the `@perm-core` alias — no copy, no fork:
+`demos/react-playground/` is a runnable Vite + React 19 + React Router 7 app that
+consumes the published packages via npm workspaces — no copy, no fork:
 
 ```bash
-cd react-demo
-yarn install
-yarn dev      # → http://localhost:4301/
-yarn build
+npm run dev:react   # → http://localhost:4301/
+npm run build -w react-playground
 ```
 
 Parity with Angular, section-for-section: mode switcher + per-permission
@@ -234,12 +241,9 @@ live composite queries, guard simulator table, and real routes:
 - Guards use the same core `canActivateRoute()` as Angular's `permGuard`,
   applied as router `loader`s + a `<Protected>` element wrapper.
 
-Key files: `react-demo/src/permissions.tsx` (`PermissionProvider`,
-`usePermission`, `useNodeVisible`, `<Show>` — the twin of `*appShowIf`),
-`components.tsx` (dumb UI), `pages.tsx` (playground + pages), `router.tsx`.
-
-> The older `src/react/adapter.ts` sketch (`showInReact`) is kept as
-> documentation; the runnable demo lives in `react-demo/`.
+Key files: `packages/react/src/permissions.tsx` (`PermissionProvider`,
+`usePermission`, `useNodeVisible`, `<Show>` — the twin of `*appShowIf`) and the
+demo's `components.tsx` / `pages.tsx` / `router.tsx`.
 
 ## 5. Demo map (both apps)
 
@@ -254,9 +258,10 @@ Angular `AppComponent` playground and React `Playground` render the same section
 | standalone buttons | inline queries     | `EDIT_USER` / `DELETE_USER`                           |
 | modal + opener     | `confirm-modal`    | shell visible iff any child visible                   |
 
-Toggle modes in code: `perms.useDemoMode('partial')` (only `VIEW_HOME`,
-`VIEW_PROFILE`, `OPTION_VIEW`, `EDIT_USER`) or `'none'` — watch parents disappear
-automatically because no child is visible.
+Toggle modes in either playground UI (Full / Partial / None) — Partial grants only
+`VIEW_HOME`, `VIEW_PROFILE`, `OPTION_VIEW`, `EDIT_USER` (`PARTIAL_PERMISSIONS`
+from `permission-visibility-demo-data`). Watch parents disappear automatically
+because no child is visible.
 
 ## 6. SOLID notes
 
@@ -277,6 +282,7 @@ automatically because no child is visible.
 
 ## 8. Reference
 
-- Core barrel: `src/core/index.ts` (only import portable code needs).
-- Core tests: `src/core/core.spec.ts` (`ng test`; also compilable to Node via `tsc`).
-- Angular CLI notes: `ng serve` / `ng build` / `ng test` (Karma+Jasmine).
+- Core barrel: `packages/core/src/index.ts` (only import portable code needs).
+- Core tests: `packages/core/test/core.test.ts` (`npm run test:packages`).
+- CI publishing: `.github/workflows/publish.yml` (release / manual dispatch,
+  `PACKAGE_DIR` selectable, dry-run by default).

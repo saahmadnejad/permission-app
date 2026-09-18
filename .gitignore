@@ -43,3 +43,9 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Workspace build artifacts
+packages/*/dist
+packages/*/dist-test
+demos/react-playground/dist
+demos/angular-playground/out-tsc

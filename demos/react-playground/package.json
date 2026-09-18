@@ -1,0 +1,26 @@
+{
+  "name": "react-playground",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 4301",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4301"
+  },
+  "dependencies": {
+    "permission-visibility-core": "0.1.0",
+    "permission-visibility-demo-data": "0.1.0",
+    "permission-visibility-react": "0.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.7.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.0"
+  }
+}

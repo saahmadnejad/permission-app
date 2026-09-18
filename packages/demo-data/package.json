@@ -1,0 +1,31 @@
+{
+  "name": "permission-visibility-demo-data",
+  "version": "0.1.0",
+  "description": "Shared demo dataset for the permission-visibility playgrounds. Not for production use.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test --test-reporter=spec dist-test/test",
+    "pretest": "tsc -p tsconfig.test.json",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "permission-visibility-core": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2"
+  }
+}
