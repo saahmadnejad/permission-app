@@ -1,16 +1,24 @@
-# npm publish pipeline.
+# npm publish pipeline for the 4-package monorepo.
+#
+# Publishes every workspace package under packages/ that is NOT "private": true
+# (today: permission-visibility-{core,demo-data,angular,react}).
 #
 # SETUP (maintainer, one time — secrets are NEVER committed):
 #   1. Revoke any npm token that was ever pasted into chat, tickets, or logs
 #      (npmjs.com → Access Tokens → revoke). Pasted tokens are compromised.
-#   2. Recommended: enable *trusted publishing* (OIDC) on the npm package,
-#      pointing at this repo + this workflow file. Then NO token/secret is
-#      needed at all — npm mints a short-lived token per run.
-#   3. Fallback: create a *granular automation* token scoped to just this
-#      package and add it as a GitHub repo secret named NPM_TOKEN
+#   2. Recommended: enable *trusted publishing* (OIDC) on each npm package,
+#      pointing at this repo + this workflow file (.github/workflows/publish.yml),
+#      environment "npm" (or remove the environment below). Then NO token/secret
+#      is needed — npm mints a short-lived token per run.
+#   3. Fallback: create a *granular automation* token scoped to just these
+#      packages and add it as a GitHub repo secret named NPM_TOKEN
 #      (Repo → Settings → Secrets and variables → Actions).
-#   4. Point PACKAGE_DIR (below / workflow input) at the publishable package.
-#      It must have name + version and must NOT be "private": true.
+#   4. Publish by cutting a GitHub Release (any tag) or running this workflow
+#      manually (Actions → Publish to npm → Run workflow, dry-run default true).
+#
+# First release tip: core has no internal deps, but angular/react/demo-data
+# depend on permission-visibility-core@0.1.0 — when bumping versions, bump core
+# first and keep the dependents' "dependencies" ranges in sync.
 #
 # This workflow only ever reads ${{ secrets.NPM_TOKEN }} at runtime.
 # No token value exists in this repo, its history, or its logs.
@@ -22,11 +30,6 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
-      package_dir:
-        description: 'Publishable package directory'
-        required: false
-        default: 'packages/core'
-        type: string
       dry_run:
         description: 'Run npm publish --dry-run instead of publishing'
         required: false
@@ -41,12 +44,60 @@ concurrency:
   group: npm-publish-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  PACKAGE_DIR: ${{ inputs.package_dir || 'packages/core' }}
-
 jobs:
-  publish:
+  discover:
     runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.ls.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: List publishable (non-private) workspace packages
+        id: ls
+        run: |
+          PACKAGES=$(node -e '
+            const fs = require("fs");
+            const out = [];
+            for (const e of fs.readdirSync("packages", { withFileTypes: true })) {
+              if (!e.isDirectory()) continue;
+              const dir = "packages/" + e.name;
+              const p = JSON.parse(fs.readFileSync(dir + "/package.json", "utf8"));
+              if (p.private) { console.error("skip (private): " + (p.name || dir)); continue; }
+              out.push({ name: p.name, version: p.version, dir: dir });
+            }
+            console.log(JSON.stringify(out));
+          ')
+          echo "packages=$PACKAGES" >> "$GITHUB_OUTPUT"
+          echo "Publishable packages: $PACKAGES"
+          [ "$(echo "$PACKAGES" | jq 'length')" -gt 0 ] || { echo "::error::No publishable packages found"; exit 1; }
+
+  build-test:
+    needs: discover
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies (workspace-aware)
+        run: npm ci --no-audit --no-fund
+
+      - name: Build all packages
+        run: npm run build:packages
+
+      - name: Test all packages
+        run: npm run test:packages
+
+  publish:
+    needs: [discover, build-test]
+    runs-on: ubuntu-latest
+    environment: npm
     steps:
       - uses: actions/checkout@v4
 
@@ -55,24 +106,24 @@ jobs:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Upgrade npm (trusted-publishing support)
+      - name: Upgrade npm (needed for --workspaces publish + provenance)
         run: npm install -g npm@latest
 
-      - name: Verify publishable package
-        run: |
-          test -f "$PACKAGE_DIR/package.json" || { echo "::error::No package.json in $PACKAGE_DIR"; exit 1; }
-          node -e "const p=require('./'+process.env.PACKAGE_DIR+'/package.json');if(p.private){console.error('::error::Refusing to publish a private package');process.exit(1)}if(!p.name||!p.version){console.error('::error::package.json needs name and version');process.exit(1)}console.log('Publishing '+p.name+'@'+p.version)"
+      - name: Install dependencies (workspace-aware)
+        run: npm ci --no-audit --no-fund
 
-      - name: Install dependencies
-        working-directory: ${{ env.PACKAGE_DIR }}
+      - name: Verify publishable packages
         run: |
-          if [ -f yarn.lock ]; then yarn install --frozen-lockfile;
-          elif [ -f package-lock.json ]; then npm ci;
-          else npm install --no-audit --no-fund; fi
-
-      - name: Build (if present)
-        working-directory: ${{ env.PACKAGE_DIR }}
-        run: npm run build --if-present
+          for dir in packages/*/; do
+            [ -f "$dir/package.json" ] || continue
+            node -e "
+              const p = require('./' + process.argv[1] + '/package.json');
+              if (p.private) { console.log('skip (private): ' + (p.name || process.argv[1])); process.exit(0); }
+              if (!p.name || !p.version) { console.error('::error::package.json needs name and version: ' + process.argv[1]); process.exit(1); }
+              if (!p.repository || !p.repository.url) { console.error('::error::provenance requires a repository field: ' + process.argv[1]); process.exit(1); }
+              console.log('Will publish ' + p.name + '@' + p.version);
+            " "${dir%/}"
+          done
 
       - name: Configure npm auth (token fallback only)
         env:
@@ -82,15 +133,28 @@ jobs:
             echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" >> ~/.npmrc
             echo "Auth: NPM_TOKEN secret."
           else
+            touch ~/.npmrc
             sed -i '/registry.npmjs.org\/:_authToken/d' ~/.npmrc
             echo "Auth: OIDC trusted publishing (no secret configured)."
           fi
 
-      - name: Publish to npmjs
-        working-directory: ${{ env.PACKAGE_DIR }}
+      - name: Publish all packages (single --workspaces call, topological)
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
         run: |
-          ARGS="--provenance --access public"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+          ARGS="--workspaces --access public"
+          if [ "$DRY_RUN" = "true" ]; then
             ARGS="$ARGS --dry-run"
+          else
+            ARGS="$ARGS --provenance"
           fi
+          # npm resolves workspace dependency order itself (core before dependents).
           npm publish $ARGS
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "### npm publish result (${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "dry_run: $DRY_RUN_MODE" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          DRY_RUN_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}

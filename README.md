@@ -284,5 +284,22 @@ because no child is visible.
 
 - Core barrel: `packages/core/src/index.ts` (only import portable code needs).
 - Core tests: `packages/core/test/core.test.ts` (`npm run test:packages`).
-- CI publishing: `.github/workflows/publish.yml` (release / manual dispatch,
-  `PACKAGE_DIR` selectable, dry-run by default).
+
+## 9. Publishing
+
+`.github/workflows/publish.yml` publishes **all four packages** to npm in one
+topological run (`npm publish --workspaces`; core first, dependents after).
+Private demos are skipped by npm itself (`private: true`).
+
+- **Triggers:** a GitHub Release being published, or manual dispatch
+  (Actions → *Publish to npm*; `dry_run` defaults to `true`).
+- **Gates:** build + `node:test` on Node 20 & 22, then `prepublishOnly` rebuilds.
+- **Auth:** npm *trusted publishing* (OIDC, no secret) by default — configure it
+  once on each package at npmjs.com (repo `saahmadnejad/permission-app`,
+  workflow `.github/workflows/publish.yml`, environment `npm`); or fall back to
+  a granular automation token in the repo secret `NPM_TOKEN`.
+- **Provenance:** real publishes run with `--provenance` (Sigstore attestation,
+  `id-token: write`); dry-runs omit it because the registry rejects provenance
+  on dry-run.
+- Version policy: bump `permission-visibility-core` first, then the adapters
+  that depend on it (their `dependencies` pin core's version).
