@@ -12,6 +12,26 @@
     }
   },
   "files": ["dist", "README.md"],
+  "keywords": [
+    "permissions",
+    "authorization",
+    "access-control",
+    "rbac",
+    "visibility",
+    "ui",
+    "frontend",
+    "framework-agnostic",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saahmadnejad/permission-app.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/saahmadnejad/permission-app/issues"
+  },
+  "homepage": "https://github.com/saahmadnejad/permission-app#readme",
   "license": "MIT",
   "publishConfig": {
     "access": "public"

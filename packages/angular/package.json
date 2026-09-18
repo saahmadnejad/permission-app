@@ -12,6 +12,26 @@
     }
   },
   "files": ["dist", "README.md"],
+  "keywords": [
+    "angular",
+    "permissions",
+    "authorization",
+    "rbac",
+    "visibility",
+    "directive",
+    "route-guard",
+    "signals",
+    "structural-directive"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saahmadnejad/permission-app.git",
+    "directory": "packages/angular"
+  },
+  "bugs": {
+    "url": "https://github.com/saahmadnejad/permission-app/issues"
+  },
+  "homepage": "https://github.com/saahmadnejad/permission-app#readme",
   "license": "MIT",
   "publishConfig": {
     "access": "public"

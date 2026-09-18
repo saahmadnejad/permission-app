@@ -12,6 +12,25 @@
     }
   },
   "files": ["dist", "README.md"],
+  "keywords": [
+    "react",
+    "hooks",
+    "permissions",
+    "authorization",
+    "rbac",
+    "visibility",
+    "provider",
+    "context"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saahmadnejad/permission-app.git",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/saahmadnejad/permission-app/issues"
+  },
+  "homepage": "https://github.com/saahmadnejad/permission-app#readme",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
